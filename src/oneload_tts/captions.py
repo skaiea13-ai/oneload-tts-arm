@@ -10,7 +10,7 @@ from pathlib import Path
 from oneload_tts._filesystem import (
     commit_open_file,
     open_or_create_bound_directory,
-    private_temporary_file,
+    private_unlinked_file,
     read_regular_file_bounded,
 )
 
@@ -136,12 +136,12 @@ def _write_caption_snapshot(destination: Path, payload: bytes) -> None:
         failure_message="could not write verified caption snapshot",
     )
     try:
-        with private_temporary_file(
+        with private_unlinked_file(
             parent_fd,
             prefix="oneload-captions",
             suffix=".srt",
             failure_message="could not write verified caption snapshot",
-        ) as (temporary_name, file_fd):
+        ) as file_fd:
             remaining = memoryview(payload)
             while remaining:
                 written = os.write(file_fd, remaining)
@@ -152,7 +152,6 @@ def _write_caption_snapshot(destination: Path, payload: bytes) -> None:
             os.fsync(file_fd)
             commit_open_file(
                 file_fd,
-                temporary_name,
                 destination.name,
                 parent_fd,
                 failure_message="could not write verified caption snapshot",

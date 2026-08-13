@@ -522,6 +522,36 @@ def test_private_staging_directory_allows_deny_only_acl(tmp_path: Path) -> None:
         os.close(parent_fd)
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS ACL behavior")
+def test_private_staging_directory_rejects_allow_after_deny_acl(tmp_path: Path) -> None:
+    protected = tmp_path / "acl-parent"
+    protected.mkdir()
+    allow = (
+        "everyone allow list,add_file,search,delete,add_subdirectory,delete_child,"
+        "readattr,writeattr,readextattr,writeextattr,readsecurity,file_inherit,"
+        "directory_inherit"
+    )
+    subprocess.run(  # noqa: S603
+        ["/bin/chmod", "+a", allow, str(protected)],
+        check=True,
+    )
+    subprocess.run(  # noqa: S603
+        ["/bin/chmod", "+a#", "0", "everyone deny writeextattr", str(protected)],
+        check=True,
+    )
+    parent_fd = os.open(protected, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        with pytest.raises(RuntimeError, match="protected parent required"):
+            with filesystem.private_staging_directory(
+                parent_fd,
+                prefix="oneload-test",
+                failure_message="protected parent required",
+            ):
+                pass
+    finally:
+        os.close(parent_fd)
+
+
 def test_model_lock_has_no_machine_path() -> None:
     lock = load_model_lock()
 
@@ -557,42 +587,48 @@ def test_write_json_atomic_does_not_follow_predictable_temp_symlink(tmp_path: Pa
     assert json.loads(destination.read_text(encoding="utf-8")) == {"status": "ok"}
 
 
-def test_write_json_atomic_replaces_final_symlink_without_following_it(tmp_path: Path) -> None:
+def test_write_json_atomic_refuses_existing_final_symlink(tmp_path: Path) -> None:
     victim = tmp_path / "victim.txt"
     victim.write_text("original", encoding="utf-8")
     destination = tmp_path / "result.json"
     destination.symlink_to(victim)
 
-    write_json_atomic(destination, {"status": "ok"})
+    with pytest.raises(RuntimeError, match="could not commit benchmark result"):
+        write_json_atomic(destination, {"status": "ok"})
 
     assert victim.read_text(encoding="utf-8") == "original"
-    assert not destination.is_symlink()
-    assert json.loads(destination.read_text(encoding="utf-8")) == {"status": "ok"}
+    assert destination.is_symlink()
 
 
-def test_write_json_atomic_rejects_temporary_entry_substitution(
+def test_write_json_atomic_refuses_existing_regular_file(tmp_path: Path) -> None:
+    destination = tmp_path / "result.json"
+    destination.write_text('{"status":"original"}\n', encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="could not commit benchmark result"):
+        write_json_atomic(destination, {"status": "replacement"})
+
+    assert json.loads(destination.read_text(encoding="utf-8")) == {"status": "original"}
+
+
+def test_write_json_atomic_publishes_from_unlinked_descriptor(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     destination = tmp_path / "result.json"
-    original_replace = benchmark.os.replace
-    retargeted = False
+    original_clone = filesystem._clone_file_from_descriptor
+    descriptor_was_unlinked = False
 
-    def retargeting_replace(source, target, *args, **kwargs) -> None:
-        nonlocal retargeted
-        temporary = tmp_path / source
-        saved_staging = tmp_path / "saved-result-temp"
-        temporary.rename(saved_staging)
-        temporary.write_text('{"status":"attacker"}', encoding="utf-8")
-        retargeted = True
-        original_replace(source, target, *args, **kwargs)
+    def checking_clone(source_fd: int, parent_fd: int, name: str) -> bool:
+        nonlocal descriptor_was_unlinked
+        descriptor_was_unlinked = os.fstat(source_fd).st_nlink == 0
+        assert not tuple(tmp_path.glob(".oneload-result.*.tmp"))
+        return original_clone(source_fd, parent_fd, name)
 
-    monkeypatch.setattr(benchmark.os, "replace", retargeting_replace)
+    monkeypatch.setattr(filesystem, "_clone_file_from_descriptor", checking_clone)
 
-    with pytest.raises(RuntimeError, match="could not commit benchmark result"):
-        write_json_atomic(destination, {"status": "intended"})
+    write_json_atomic(destination, {"status": "intended"})
 
-    assert retargeted
-    assert json.loads(destination.read_text(encoding="utf-8")) == {"status": "attacker"}
+    assert descriptor_was_unlinked
+    assert json.loads(destination.read_text(encoding="utf-8")) == {"status": "intended"}
 
 
 def test_write_json_atomic_rejects_parent_swap_before_open(
@@ -675,30 +711,37 @@ def test_write_wav_atomic_uses_and_hashes_the_open_descriptor(tmp_path: Path) ->
     assert decoded.shape == audio.shape
 
 
-def test_write_wav_atomic_rejects_temporary_entry_substitution(
+def test_write_wav_atomic_publishes_from_unlinked_descriptor(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     destination = tmp_path / "audio.wav"
-    original_replace = engine.os.replace
-    retargeted = False
+    original_clone = filesystem._clone_file_from_descriptor
+    descriptor_was_unlinked = False
 
-    def retargeting_replace(source, target, *args, **kwargs) -> None:
-        nonlocal retargeted
-        temporary = tmp_path / source
-        saved_staging = tmp_path / "saved-wav-temp"
-        temporary.rename(saved_staging)
-        temporary.write_bytes(b"attacker")
-        retargeted = True
-        original_replace(source, target, *args, **kwargs)
+    def checking_clone(source_fd: int, parent_fd: int, name: str) -> bool:
+        nonlocal descriptor_was_unlinked
+        descriptor_was_unlinked = os.fstat(source_fd).st_nlink == 0
+        assert not tuple(tmp_path.glob(".oneload-wav.*.tmp"))
+        return original_clone(source_fd, parent_fd, name)
 
-    monkeypatch.setattr(engine.os, "replace", retargeting_replace)
+    monkeypatch.setattr(filesystem, "_clone_file_from_descriptor", checking_clone)
+    audio = np.asarray([0.0, 0.25, -0.25, 0.0], dtype=np.float32)
+
+    _write_wav_atomic(destination, audio, 24_000)
+
+    assert descriptor_was_unlinked
+    assert sha256_file(destination)
+
+
+def test_write_wav_atomic_refuses_existing_file(tmp_path: Path) -> None:
+    destination = tmp_path / "audio.wav"
+    destination.write_bytes(b"original")
     audio = np.asarray([0.0, 0.25, -0.25, 0.0], dtype=np.float32)
 
     with pytest.raises(RuntimeError, match="could not write WAV output"):
         _write_wav_atomic(destination, audio, 24_000)
 
-    assert retargeted
-    assert destination.read_bytes() == b"attacker"
+    assert destination.read_bytes() == b"original"
 
 
 def test_benchmark_rejects_nonidentical_audio_hashes() -> None:

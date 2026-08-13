@@ -1,11 +1,11 @@
 {
   "baseline": {
-    "generation_seconds": 8.464,
+    "generation_seconds": 8.767,
     "mode": "one cold process per scene",
-    "model_load_seconds": 2.135,
+    "model_load_seconds": 2.258,
     "model_loads": 3,
     "peak_model_memory_gb": 6.062,
-    "wall_seconds": 19.766
+    "wall_seconds": 20.351
   },
   "hardware": {
     "architecture": "arm64",
@@ -14,18 +14,18 @@
   "implementation_sha256": {
     "src/oneload_tts/__init__.py": "c160775f20c890edc699b58435d4881ecf44f1cf89e16fcaaf17cceaf01fa569",
     "src/oneload_tts/__main__.py": "3012568e074e69e496332f94ef7f2f7ca54ac5a41711a910facc975be9d60ef6",
-    "src/oneload_tts/_filesystem.py": "e1981dcb7da01a138d5a7400f948700b84b6241c4418f37f7540dc723d2901d4",
-    "src/oneload_tts/benchmark.py": "35bb59c3d7883c4de7bc5974296b8126f85fdca9ed75d9d619ca2dd761f5f342",
+    "src/oneload_tts/_filesystem.py": "5b51a65c2fe567b1a4de6a9e3392f4946061f9b00b2731e776b6f58664bfc0df",
+    "src/oneload_tts/benchmark.py": "0f9380bdc19913b8903cbf11892f3ab560b0c8e19d4097ade6aaf00be29c2763",
     "src/oneload_tts/cli.py": "8429d780ebf14e4adb9ad047fbfbed8f6e2ca120857a7f4e99149b58ad6a8cd6",
-    "src/oneload_tts/engine.py": "49084f93eed608c09889eada8eae290f1dc0a45cdf8cc924be058c574ef309b1",
+    "src/oneload_tts/engine.py": "5e1c9dbba3a56ac0a782271ff67f4a3e80035249d01a092f0327f9325f2e22c3",
     "src/oneload_tts/manifest.py": "6e6329f5fd6018862e67f8bda721ed0b70eb24c5fd9d1ac949ae792a3fb57059"
   },
   "improvement": {
     "bit_identical_outputs": true,
     "model_load_reduction_percent": 66.7,
     "peak_model_memory_change_percent": 0.0,
-    "wall_clock_reduction_percent": 38.1,
-    "wall_clock_speedup": 1.616
+    "wall_clock_reduction_percent": 35.4,
+    "wall_clock_speedup": 1.549
   },
   "manifest_sha256": "eedc08bca1b6a71cffaff24031864c130bb63c7348622ddab07a0bdecb964a32",
   "metric_scope": "median end-to-end wall clock including process startup and model loading",
@@ -36,12 +36,12 @@
   "model_verified_bytes": 2696100432,
   "optimized": {
     "audio_seconds": 17.84,
-    "generation_seconds": 8.46,
+    "generation_seconds": 8.755,
     "mode": "one persistent process for the scene manifest",
-    "model_load_seconds": 0.71,
+    "model_load_seconds": 1.174,
     "model_loads": 1,
     "peak_model_memory_gb": 6.062,
-    "wall_seconds": 12.234
+    "wall_seconds": 13.14
   },
   "output_sha256": {
     "cold-baseline": "c541c23d57d575c10a6e89b72779bea02431d342385b5c00ac0bc04d7bdcd29e",
@@ -56,16 +56,16 @@
   "trial_results": [
     {
       "baseline": {
-        "generation_seconds": 8.464,
-        "model_load_seconds": 2.167,
+        "generation_seconds": 8.92,
+        "model_load_seconds": 3.2,
         "peak_model_memory_gb": 6.062,
-        "wall_seconds": 19.769
+        "wall_seconds": 21.673
       },
       "optimized": {
-        "generation_seconds": 8.46,
-        "model_load_seconds": 0.715,
+        "generation_seconds": 8.755,
+        "model_load_seconds": 1.179,
         "peak_model_memory_gb": 6.062,
-        "wall_seconds": 12.232
+        "wall_seconds": 13.14
       },
       "order": [
         "cold",
@@ -75,16 +75,16 @@
     },
     {
       "baseline": {
-        "generation_seconds": 8.44,
-        "model_load_seconds": 2.116,
+        "generation_seconds": 8.762,
+        "model_load_seconds": 2.258,
         "peak_model_memory_gb": 6.062,
-        "wall_seconds": 19.665
+        "wall_seconds": 20.351
       },
       "optimized": {
-        "generation_seconds": 8.445,
-        "model_load_seconds": 0.699,
+        "generation_seconds": 8.72,
+        "model_load_seconds": 1.174,
         "peak_model_memory_gb": 6.062,
-        "wall_seconds": 12.234
+        "wall_seconds": 13.114
       },
       "order": [
         "persistent",
@@ -94,16 +94,16 @@
     },
     {
       "baseline": {
-        "generation_seconds": 8.486,
-        "model_load_seconds": 2.135,
+        "generation_seconds": 8.767,
+        "model_load_seconds": 2.249,
         "peak_model_memory_gb": 6.062,
-        "wall_seconds": 19.766
+        "wall_seconds": 20.236
       },
       "optimized": {
-        "generation_seconds": 8.488,
-        "model_load_seconds": 0.71,
+        "generation_seconds": 8.778,
+        "model_load_seconds": 1.17,
         "peak_model_memory_gb": 6.062,
-        "wall_seconds": 12.266
+        "wall_seconds": 13.187
       },
       "order": [
         "cold",

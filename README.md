@@ -48,6 +48,9 @@ the script.
 For model, output, and benchmark paths, use directories owned by the current
 user. OneLoad fails closed on unprotected shared writable parents and accepts a
 root- or user-owned sticky temporary directory when a shared location is needed.
+WAV files, benchmark reports, and caption snapshots are write-once: choose an
+empty output directory or a new filename. Their destination volume must support
+macOS copy-on-write cloning; APFS does.
 
 ## Validate and render
 
@@ -79,6 +82,7 @@ every child an immutable private copy of the parent-validated
 manifest, renders each scene in an isolated cold process, renders the same
 manifest with one persistent model load, compares every child manifest digest
 and all WAV hashes, and writes the sanitized result to
+`output/benchmark/apple-m4.json`. The committed reference result remains at
 `benchmarks/apple-m4.json`. The report binds the manifest, model-lock file,
 verified model byte count, and exact runtime source hashes used for the run. The
 measurement method is documented in
@@ -87,9 +91,9 @@ measurement method is documented in
 ### Apple M4 result
 
 The committed three-scene run produced 17.84 seconds of audio. Across three
-alternating-order trials, the cold path had a median end-to-end time of 19.766
+alternating-order trials, the cold path had a median end-to-end time of 20.351
 seconds and loaded the model three times per trial. The persistent path had a
-median time of 12.234 seconds and loaded it once. That is a 38.1% wall-clock
+median time of 13.140 seconds and loaded it once. That is a 35.4% wall-clock
 reduction and a 66.7% reduction in model loads, with no increase in measured
 peak model memory. All three optimized WAV files are bit-identical to their
 cold-baseline counterparts in every trial.

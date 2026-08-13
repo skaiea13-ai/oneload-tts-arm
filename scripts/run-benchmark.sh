@@ -92,4 +92,4 @@ fi
 exec /usr/bin/env -u BASH_ENV -u ENV "${python_bin}" -I -B -m oneload_tts benchmark \
   --manifest examples/demo-manifest.json \
   --model-path "${model_dir}" \
-  --result benchmarks/apple-m4.json
+  --result output/benchmark/apple-m4.json

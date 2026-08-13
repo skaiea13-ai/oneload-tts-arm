@@ -17,6 +17,8 @@ Wall-clock measurements include interpreter startup, model validation, model
 loading, generation, and WAV output. Model-load and generation time are also
 reported separately. Output hashes are compared by scene. A speed result is
 accepted only when every baseline and optimized WAV has the same SHA-256 hash.
+The runner writes a fresh result to `output/benchmark/apple-m4.json` and refuses
+to replace an existing report. Use an empty output tree for each reproduction.
 
 The committed result contains the Arm architecture, chip family, model identity
 and revision, verified model byte count, manifest and model-lock hashes, exact

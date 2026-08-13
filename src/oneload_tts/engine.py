@@ -21,7 +21,7 @@ from oneload_tts._filesystem import (
     open_or_create_bound_directory,
     open_relative_directory,
     private_staging_directory,
-    private_temporary_file,
+    private_unlinked_file,
 )
 from oneload_tts.manifest import Manifest, Segment, canonical_output_key
 
@@ -673,12 +673,12 @@ def _write_wav_at(
     if destination_name in {"", ".", ".."} or "/" in destination_name:
         raise RuntimeError("invalid WAV destination")
     try:
-        with private_temporary_file(
+        with private_unlinked_file(
             directory_fd,
             prefix="oneload-wav",
             suffix=".tmp",
             failure_message="could not write WAV output",
-        ) as (temporary_name, temporary_fd):
+        ) as temporary_fd:
             sf.write(
                 temporary_fd,
                 audio,
@@ -695,7 +695,6 @@ def _write_wav_at(
                 raise RuntimeError("WAV output changed while hashing")
             commit_open_file(
                 temporary_fd,
-                temporary_name,
                 destination_name,
                 directory_fd,
                 failure_message="could not write WAV output",

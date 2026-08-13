@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+import oneload_tts._filesystem as filesystem
 import oneload_tts.captions as captions_module
 from oneload_tts.captions import MAX_CAPTION_INPUT_BYTES, main, verify_caption_timing
 
@@ -286,6 +287,38 @@ def test_caption_cli_writes_exact_private_snapshot(
     assert snapshot.read_bytes() == expected
     assert stat.S_IMODE(snapshot.stat().st_mode) == 0o400
     assert "matches" in capsys.readouterr().out
+
+
+def test_caption_snapshot_publishes_from_unlinked_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    destination = tmp_path / "captions.srt"
+    payload = b"1\n00:00:00,000 --> 00:00:01,000\nSafe.\n"
+    original_clone = filesystem._clone_file_from_descriptor
+    descriptor_was_unlinked = False
+
+    def checking_clone(source_fd: int, parent_fd: int, name: str) -> bool:
+        nonlocal descriptor_was_unlinked
+        descriptor_was_unlinked = os.fstat(source_fd).st_nlink == 0
+        assert not tuple(tmp_path.glob(".oneload-captions.*.srt"))
+        return original_clone(source_fd, parent_fd, name)
+
+    monkeypatch.setattr(filesystem, "_clone_file_from_descriptor", checking_clone)
+
+    captions_module._write_caption_snapshot(destination, payload)
+
+    assert descriptor_was_unlinked
+    assert destination.read_bytes() == payload
+
+
+def test_caption_snapshot_refuses_existing_file(tmp_path: Path) -> None:
+    destination = tmp_path / "captions.srt"
+    destination.write_bytes(b"original")
+
+    with pytest.raises(RuntimeError, match="could not write verified caption snapshot"):
+        captions_module._write_caption_snapshot(destination, b"replacement")
+
+    assert destination.read_bytes() == b"original"
 
 
 def test_caption_cli_snapshot_does_not_reopen_changed_source(

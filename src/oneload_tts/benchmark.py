@@ -14,7 +14,7 @@ from statistics import median
 from oneload_tts._filesystem import (
     commit_open_file,
     open_or_create_bound_directory,
-    private_temporary_file,
+    private_unlinked_file,
     read_regular_file_bounded,
 )
 from oneload_tts.manifest import MAX_MANIFEST_BYTES, Manifest
@@ -427,19 +427,18 @@ def write_json_atomic(path: Path, payload: dict[str, object]) -> None:
         failure_message="result directory changed before writing",
     )
     try:
-        with private_temporary_file(
+        with private_unlinked_file(
             directory_fd,
             prefix="oneload-result",
             suffix=".tmp",
             failure_message="could not commit benchmark result",
-        ) as (temporary_name, temporary_fd):
+        ) as temporary_fd:
             with os.fdopen(os.dup(temporary_fd), "w", encoding="utf-8") as temporary:
                 temporary.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
                 temporary.flush()
                 os.fsync(temporary.fileno())
             commit_open_file(
                 temporary_fd,
-                temporary_name,
                 destination_name,
                 directory_fd,
                 failure_message="could not commit benchmark result",

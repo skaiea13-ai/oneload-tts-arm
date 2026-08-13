@@ -94,6 +94,32 @@ def _same_identity(left: os.stat_result, right: os.stat_result) -> bool:
     return _directory_identity(left) == _directory_identity(right)
 
 
+def _same_descriptor_contents(left_fd: int, right_fd: int, expected_size: int) -> bool:
+    """Compare two stable regular-file descriptors without changing their offsets."""
+
+    left_before = os.fstat(left_fd)
+    right_before = os.fstat(right_fd)
+    if left_before.st_size != expected_size or right_before.st_size != expected_size:
+        return False
+    offset = 0
+    while offset < expected_size:
+        length = min(1024 * 1024, expected_size - offset)
+        left = os.pread(left_fd, length, offset)
+        right = os.pread(right_fd, length, offset)
+        if not left or left != right:
+            return False
+        offset += len(left)
+    left_after = os.fstat(left_fd)
+    right_after = os.fstat(right_fd)
+    return all(
+        before.st_size == after.st_size
+        and before.st_mtime_ns == after.st_mtime_ns
+        and before.st_ctime_ns == after.st_ctime_ns
+        and _same_identity(before, after)
+        for before, after in ((left_before, left_after), (right_before, right_after))
+    )
+
+
 def open_bound_directory(path: Path, *, failure_message: str) -> tuple[Path, int]:
     """Open the exact directory object resolved at the start of the operation."""
 
@@ -382,14 +408,14 @@ def private_staging_directory(
 
 
 @contextmanager
-def private_temporary_file(
+def private_unlinked_file(
     parent_fd: int,
     *,
     prefix: str,
     suffix: str,
     failure_message: str,
-) -> Iterator[tuple[str, int]]:
-    """Create an exclusive private file and retain its descriptor through commit."""
+) -> Iterator[int]:
+    """Create an exclusive private file, unlink its name, and retain its descriptor."""
 
     name: str | None = None
     file_fd: int | None = None
@@ -438,71 +464,95 @@ def private_temporary_file(
                 pass
         raise RuntimeError(failure_message) from None
 
-    body_failed = False
     try:
-        yield name, file_fd
-    except BaseException:
-        body_failed = True
-        raise
-    finally:
-        cleanup_failed = False
-        try:
-            current = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
-        except FileNotFoundError:
-            pass
-        except OSError:
-            cleanup_failed = True
-        else:
-            if stat.S_ISREG(current.st_mode) and _directory_identity(current) == identity:
-                try:
-                    os.unlink(name, dir_fd=parent_fd)
-                except OSError:
-                    cleanup_failed = True
+        os.unlink(name, dir_fd=parent_fd)
+        unlinked = os.fstat(file_fd)
+        if not _same_identity(opened, unlinked) or unlinked.st_nlink != 0:
+            raise RuntimeError(failure_message)
+    except (OSError, RuntimeError):
         os.close(file_fd)
-        if cleanup_failed and not body_failed:
-            raise RuntimeError(failure_message) from None
+        if name is not None and identity is not None:
+            try:
+                current = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+                if stat.S_ISREG(current.st_mode) and _directory_identity(current) == identity:
+                    os.unlink(name, dir_fd=parent_fd)
+            except OSError:
+                pass
+        raise RuntimeError(failure_message) from None
+
+    try:
+        yield file_fd
+    finally:
+        os.close(file_fd)
 
 
 def commit_open_file(
     file_fd: int,
-    temporary_name: str,
     destination_name: str,
     parent_fd: int,
     *,
     failure_message: str,
 ) -> None:
-    """Rename an open temporary file and verify the committed name still binds it."""
+    """Publish an unlinked open file to a previously absent name."""
 
     if destination_name in {"", ".", ".."} or "/" in destination_name:
         raise RuntimeError(failure_message)
+    destination_fd: int | None = None
+    created = False
+    created_identity: tuple[int, int] | None = None
     try:
+        _require_protected_directory(parent_fd, failure_message=failure_message)
         opened = os.fstat(file_fd)
-        current = os.stat(temporary_name, dir_fd=parent_fd, follow_symlinks=False)
         if (
             not stat.S_ISREG(opened.st_mode)
-            or not stat.S_ISREG(current.st_mode)
-            or opened.st_nlink != 1
-            or not _same_identity(opened, current)
+            or opened.st_uid != os.geteuid()
+            or opened.st_nlink != 0
+            or opened.st_mode & (stat.S_IRWXG | stat.S_IRWXO)
         ):
             raise RuntimeError(failure_message)
-        os.replace(
-            temporary_name,
-            destination_name,
-            src_dir_fd=parent_fd,
-            dst_dir_fd=parent_fd,
-        )
-        committed = os.stat(destination_name, dir_fd=parent_fd, follow_symlinks=False)
+        if not _clone_file_from_descriptor(file_fd, parent_fd, destination_name):
+            raise RuntimeError(failure_message)
+        created = True
+        created_state = os.stat(destination_name, dir_fd=parent_fd, follow_symlinks=False)
+        created_identity = _directory_identity(created_state)
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+        destination_fd = os.open(destination_name, flags, dir_fd=parent_fd)
+        committed = os.fstat(destination_fd)
+        current = os.stat(destination_name, dir_fd=parent_fd, follow_symlinks=False)
         after = os.fstat(file_fd)
         if (
             not stat.S_ISREG(committed.st_mode)
-            or not _same_identity(opened, committed)
+            or not stat.S_ISREG(current.st_mode)
+            or not _same_identity(committed, current)
             or not _same_identity(opened, after)
+            or _same_identity(opened, committed)
+            or committed.st_size != opened.st_size
             or committed.st_nlink != 1
+            or committed.st_uid != os.geteuid()
+            or committed.st_mode & (stat.S_IRWXG | stat.S_IRWXO)
+            or not _same_descriptor_contents(file_fd, destination_fd, opened.st_size)
         ):
             raise RuntimeError(failure_message)
         os.fsync(parent_fd)
-    except OSError:
+    except (OSError, RuntimeError):
+        if destination_fd is not None:
+            os.close(destination_fd)
+            destination_fd = None
+        if created:
+            try:
+                current = os.stat(destination_name, dir_fd=parent_fd, follow_symlinks=False)
+                if (
+                    created_identity is not None
+                    and _directory_identity(current) == created_identity
+                ):
+                    os.unlink(destination_name, dir_fd=parent_fd)
+                    os.fsync(parent_fd)
+            except OSError:
+                pass
         raise RuntimeError(failure_message) from None
+    finally:
+        if destination_fd is not None:
+            os.close(destination_fd)
 
 
 def read_regular_file_bounded(path: Path, *, maximum_bytes: int, label: str) -> bytes:

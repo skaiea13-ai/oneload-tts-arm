@@ -9,9 +9,10 @@ are rejected. Manifest and caption inputs must be regular files. Every path
 component is opened descriptor-relatively with `O_NOFOLLOW`, and the final file
 is read through a bounded nonblocking descriptor, so links, FIFOs, and devices
 cannot redirect or indefinitely stall the read. Audio duration is capped and
-written through a private file descriptor. OneLoad commits the WAV only if its
-exclusive temporary entry still names that descriptor, then verifies that the
-destination name binds the same file object.
+written through a private file descriptor. OneLoad unlinks the random staging
+name before writing, then publishes directly from that descriptor into a
+previously absent destination with macOS `fclonefileat`. Existing destinations
+are never overwritten, and the committed descriptor and bytes are verified.
 
 Before downloading, OneLoad creates or opens the target without following links,
 requires an owner-protected directory chain, and rejects links, special files,
@@ -45,8 +46,9 @@ repository-relative script component with `O_NOFOLLOW`, then compares the final
 regular file to the entry point already opened by Bash. WAV and benchmark JSON
 writes walk and create every output-root
 component from `/` or the already-open current directory with `O_NOFOLLOW`;
-both keep exclusive random mode-0600 temporary files open through
-descriptor-relative replacement and verify the committed name. Benchmark
+both unlink exclusive random mode-0600 staging names before use and publish
+through descriptor-bound, no-overwrite copy-on-write clones. Output volumes must
+support that macOS cloning primitive. Benchmark
 children run under an ACL-checked private temporary root and receive a mode-0400
 copy of the exact manifest bytes validated by the parent. They use isolated
 Python import semantics, ignore the working directory and user site, and receive

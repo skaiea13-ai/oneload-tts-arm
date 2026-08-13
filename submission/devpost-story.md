@@ -36,9 +36,9 @@ runtime source hashes.
 On the committed three-scene Apple M4 run, using the median of three trials with
 alternating execution order:
 
-- Cold baseline: 19.766 seconds, three model loads per trial
-- OneLoad: 12.234 seconds, one model load per trial
-- Wall-clock reduction: 38.1%
+- Cold baseline: 20.351 seconds, three model loads per trial
+- OneLoad: 13.140 seconds, one model load per trial
+- Wall-clock reduction: 35.4%
 - Model-load reduction: 66.7%
 - Peak model memory change: 0.0%
 - Audio equivalence: all three WAV files are bit-identical by SHA-256
