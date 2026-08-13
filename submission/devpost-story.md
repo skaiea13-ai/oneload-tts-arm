@@ -29,23 +29,23 @@ the local model path.
 The repository also includes a cold-versus-persistent benchmark. The baseline
 starts one fresh process per scene. The optimized path uses the same text,
 settings, seeds, model revision, and machine, but keeps one process alive. The
-benchmark refuses to publish a speed comparison if any output hash differs. Its
-report also binds the validated manifest, model lock, verified model bytes, and
-runtime source hashes.
+benchmark bounds and validates each child receipt, then reopens and hashes the
+actual WAV files itself. It refuses to publish a speed comparison if any output
+hash differs. Its report also binds the validated manifest, model lock, frozen
+dependency lock, verified model bytes, and runtime source hashes.
 
 On the committed three-scene Apple M4 run, using the median of three trials with
 alternating execution order:
 
-- Cold baseline: 20.351 seconds, three model loads per trial
-- OneLoad: 13.140 seconds, one model load per trial
-- Wall-clock reduction: 35.4%
-- Model-load reduction: 66.7%
-- Peak model memory change: 0.0%
+- Cold baseline: 19.823 seconds, three render processes per trial
+- OneLoad: 12.209 seconds, one render process per trial
+- Wall-clock reduction: 38.4%
+- Render-process reduction: 66.7%
 - Audio equivalence: all three WAV files are bit-identical by SHA-256
 
-This is an end-to-end result, not a claim that the model itself generates audio
-faster. The measured gain comes from removing repeated process startup, model
-validation, and model loading from the multi-scene workflow.
+This number covers the whole workflow. It does not mean the model generates
+speech 38.4% faster. The difference comes from removing repeated process startup,
+model validation, and model loading from the multi-scene workflow.
 
 ## Why it should win
 
@@ -54,10 +54,11 @@ speech models keep narration private and avoid usage fees on an Arm laptop, but 
 command that reloads the model for every scene spends more time on setup. OneLoad
 still gives me one WAV per scene without repeating that loading work.
 
-The performance claims are tied to a concrete artifact. The repository locks the
-model revision, exact byte sizes, and SHA-256 digests for the complete downloaded
-snapshot. The benchmark runs offline, and another Apple Silicon user can rerun the
-source- and model-bound JSON report with a different scene manifest.
+The benchmark result is not a loose timing claim. The repository locks the model
+revision, exact byte sizes, and SHA-256 digests for the complete downloaded
+snapshot. The benchmark runs offline. Its JSON report records the source and
+model hashes used for the run, so another Apple Silicon user can repeat the test
+or substitute a different scene manifest.
 
 ## Setup instructions
 
@@ -87,17 +88,16 @@ enabled. The benchmark also caps its subprocess count and total runtime.
 
 ## Built with
 
-Python 3.12, MLX, MLX Audio, Qwen3-TTS CustomVoice 1.7B 6-bit, SoundFile, uv,
-pytest, and Ruff on Apple M4 Arm64.
+Python 3.12, MLX, MLX Audio, Qwen3-TTS CustomVoice 1.7B 6-bit, SoundFile, HTTPX,
+uv, pytest, and Ruff on Apple M4 Arm64.
 
 ## Challenges and lessons
 
-Timing was not the hardest acceptance criterion. I needed to prove that the faster
-workflow did not quietly change the audio. Both paths reset the random state for
-each scene and compare the final PCM WAV hashes. I also separated end-to-end
-latency from generation time and alternated the run order to reduce timing bias.
-Most of the gain comes from avoiding repeated startup and loading, and the report
-labels it that way.
+Timing was the easy part. The harder part was proving that the faster workflow did
+not quietly change the audio. Both paths reset the random state for each scene and
+compare the final PCM WAV hashes. I kept child-reported diagnostics out of the
+public result and used only the end-to-end time measured by the parent process. I
+also alternated the run order to reduce timing bias.
 
 ## What's next
 

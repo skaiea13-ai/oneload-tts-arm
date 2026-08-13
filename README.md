@@ -66,9 +66,11 @@ uv run oneload-tts render \
   --output-dir output/demo
 ```
 
-The renderer writes one receipt for the batch and one receipt per scene. Public
-receipts contain relative output names, model provenance, hashes, timing, audio
-length, and peak model memory. They never expose the local model path.
+The renderer writes one operational receipt for the batch and one receipt per
+scene. They contain relative output names, model provenance, hashes, timing,
+audio length, and peak model memory, but never the local model path. Treat these
+local receipts as workflow artifacts and review scene labels before publishing
+them. The committed benchmark uses only ordinal scene labels.
 
 ## Reproduce the cold-versus-persistent benchmark
 
@@ -80,23 +82,23 @@ export ONELOAD_MODEL_DIR=/path/to/Qwen3-TTS-12Hz-1.7B-CustomVoice-6bit
 The command caps the benchmark at 16 render subprocesses and 30 minutes. It gives
 every child an immutable private copy of the parent-validated
 manifest, renders each scene in an isolated cold process, renders the same
-manifest with one persistent model load, compares every child manifest digest
-and all WAV hashes, and writes the sanitized result to
+manifest with one persistent model load, validates each bounded child receipt,
+then independently reopens and hashes the exact expected WAV set. Child-reported
+timing and memory fields are never used as public benchmark evidence. The parent
+measures end-to-end wall time itself and writes the sanitized result to
 `output/benchmark/apple-m4.json`. The committed reference result remains at
 `benchmarks/apple-m4.json`. The report binds the manifest, model-lock file,
-verified model byte count, and exact runtime source hashes used for the run. The
-measurement method is documented in
+verified model byte count, frozen dependency lock, and exact runtime source
+hashes used for the run. The measurement method is documented in
 [docs/benchmark-method.md](docs/benchmark-method.md).
 
 ### Apple M4 result
 
-The committed three-scene run produced 17.84 seconds of audio. Across three
-alternating-order trials, the cold path had a median end-to-end time of 20.351
-seconds and loaded the model three times per trial. The persistent path had a
-median time of 13.140 seconds and loaded it once. That is a 35.4% wall-clock
-reduction and a 66.7% reduction in model loads, with no increase in measured
-peak model memory. All three optimized WAV files are bit-identical to their
-cold-baseline counterparts in every trial.
+Across three alternating-order trials, the cold path had a median end-to-end
+time of 19.823 seconds across three render processes. The persistent path used
+one process and had a median time of 12.209 seconds. That is a 38.4% wall-clock
+reduction and a 66.7% reduction in render processes. All three optimized WAV
+files are bit-identical to their cold-baseline counterparts in every trial.
 
 These numbers describe this manifest on this machine, not a universal model
 speed claim. The JSON report includes source- and model-bound provenance to

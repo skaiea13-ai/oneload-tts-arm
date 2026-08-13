@@ -145,7 +145,7 @@ def main() -> int:
                 trials=args.trials,
             )
             write_json_atomic(args.result, payload)
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        print(json.dumps(payload, allow_nan=False, indent=2, sort_keys=True))
         return 0
     except Exception as error:
         print(f"oneload-tts: {_safe_error_message(error, args)}", file=sys.stderr)

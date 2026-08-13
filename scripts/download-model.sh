@@ -76,8 +76,6 @@ if [[ ! -f pyproject.toml || ! -f model-lock.json ]]; then
   echo "Could not verify the OneLoad repository root." >&2
   exit 65
 fi
-model_id="mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-6bit"
-revision="1c6c0ff58c43afa8df571facde2efa077efd85e2"
 model_target="${ONELOAD_MODEL_DIR:-.models/Qwen3-TTS-12Hz-1.7B-CustomVoice-6bit}"
 python_bin="./.venv/bin/python"
 
@@ -86,17 +84,22 @@ if [[ ! -x "${python_bin}" ]]; then
   exit 69
 fi
 
-if ! "${python_bin}" -I -B -m oneload_tts.download_guard \
+if ! /usr/bin/env \
+  -u BASH_ENV \
+  -u ENV \
+  -u HF_TOKEN \
+  -u HUGGING_FACE_HUB_TOKEN \
+  -u HF_TOKEN_PATH \
+  -u HUGGINGFACE_CO_STAGING \
+  HF_ENDPOINT=https://huggingface.co \
+  HF_HUB_DISABLE_IMPLICIT_TOKEN=1 \
+  HF_HUB_DISABLE_TELEMETRY=1 \
+  "${python_bin}" -I -B -m oneload_tts.download_guard \
   --target "${model_target}" \
-  --lock model-lock.json; then
-  echo "Refusing an unprotected or partially populated model download target." >&2
+  --lock model-lock.json \
+  --download; then
+  echo "Pinned model download was rejected or could not be verified." >&2
   exit 65
 fi
-
-/usr/bin/env -u BASH_ENV -u ENV HF_HUB_DISABLE_TELEMETRY=1 \
-  "${python_bin}" -I -B -m huggingface_hub.cli.hf download \
-  "${model_id}" \
-  --revision "${revision}" \
-  --local-dir "${model_target}"
 
 printf '%s\n' "Pinned model is ready under the selected local model directory."

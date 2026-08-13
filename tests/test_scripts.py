@@ -73,13 +73,31 @@ def test_download_script_runs_from_documented_repository_root(tmp_path: Path) ->
         (
             "#!/bin/sh\nset -eu\n"
             'if [ "$3" = "oneload_tts.download_guard" ]; then exit 0; fi\n'
-            'printf \'%s\\n\' "$*" > "$ONELOAD_TEST_MARKER"\n'
+            "{\n"
+            "  printf '%s\\n' \"$*\"\n"
+            "  printf '%s\\n' \"${HF_ENDPOINT-unset}\"\n"
+            "  printf '%s\\n' \"${HF_HUB_DISABLE_IMPLICIT_TOKEN-unset}\"\n"
+            "  printf '%s\\n' \"${HF_TOKEN-unset}\"\n"
+            "  printf '%s\\n' \"${HUGGING_FACE_HUB_TOKEN-unset}\"\n"
+            "  printf '%s\\n' \"${HF_TOKEN_PATH-unset}\"\n"
+            "  printf '%s\\n' \"${HUGGINGFACE_CO_STAGING-unset}\"\n"
+            '} > "$ONELOAD_TEST_MARKER"\n'
         ),
         encoding="utf-8",
     )
     python.chmod(0o700)
     environment = os.environ.copy()
-    environment["ONELOAD_TEST_MARKER"] = str(marker)
+    environment.update(
+        {
+            "ONELOAD_TEST_MARKER": str(marker),
+            "HF_ENDPOINT": "https://attacker.invalid",
+            "HF_HUB_DISABLE_IMPLICIT_TOKEN": "0",
+            "HF_TOKEN": "synthetic-current-token",
+            "HUGGING_FACE_HUB_TOKEN": "synthetic-legacy-token",
+            "HF_TOKEN_PATH": "/tmp/synthetic-token-path",
+            "HUGGINGFACE_CO_STAGING": "1",
+        }
+    )
 
     subprocess.run(  # noqa: S603
         ["./scripts/download-model.sh"],
@@ -90,10 +108,24 @@ def test_download_script_runs_from_documented_repository_root(tmp_path: Path) ->
         env=environment,
     )
 
-    arguments = marker.read_text(encoding="utf-8")
-    assert arguments.startswith("-I -B -m huggingface_hub.cli.hf download ")
-    assert "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-6bit" in arguments
-    assert "--revision 1c6c0ff58c43afa8df571facde2efa077efd85e2" in arguments
+    (
+        arguments,
+        endpoint,
+        implicit_auth,
+        current_auth,
+        legacy_auth,
+        auth_path,
+        staging,
+    ) = marker.read_text(encoding="utf-8").splitlines()
+    assert arguments.startswith("-I -B -m oneload_tts.download_guard ")
+    assert "--target .models/Qwen3-TTS-12Hz-1.7B-CustomVoice-6bit" in arguments
+    assert "--lock model-lock.json --download" in arguments
+    assert endpoint == "https://huggingface.co"
+    assert implicit_auth == "1"
+    assert current_auth == "unset"
+    assert legacy_auth == "unset"
+    assert auth_path == "unset"
+    assert staging == "unset"
 
 
 def test_download_script_rejects_symlinked_custom_target_before_download(tmp_path: Path) -> None:
@@ -103,14 +135,18 @@ def test_download_script_rejects_symlinked_custom_target_before_download(tmp_pat
     python.write_text(
         (
             "#!/bin/sh\nset -eu\n"
-            f'if [ "$4" = "oneload_tts.download_guard" ]; then '
-            f"exec {sys.executable} -I -B -m oneload_tts.download_guard "
-            '"$5" "$6" "$7" "$8"; fi\n'
+            f"exec '{sys.executable}' \"$@\"\n"
             'printf unsafe > "$ONELOAD_TEST_MARKER"\n'
         ),
         encoding="utf-8",
     )
     python.chmod(0o700)
+    (root / "model-lock.json").write_text(
+        '{"model_id":"example/public-model","revision":"1111111111111111111111111111111111111111",'
+        '"license":"Apache-2.0","required_files":{"weight.bin":{"size":1,'
+        '"sha256":"0000000000000000000000000000000000000000000000000000000000000000"}}}\n',
+        encoding="utf-8",
+    )
     real_target = tmp_path / "real-model"
     real_target.mkdir()
     linked_target = tmp_path / "linked-model"
@@ -134,7 +170,7 @@ def test_download_script_rejects_symlinked_custom_target_before_download(tmp_pat
     )
 
     assert rejected.returncode == 65
-    assert "unprotected or partially populated" in rejected.stderr
+    assert "Pinned model download was rejected" in rejected.stderr
     assert not marker.exists()
 
 

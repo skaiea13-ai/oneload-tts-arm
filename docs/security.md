@@ -16,8 +16,15 @@ are never overwritten, and the committed descriptor and bytes are verified.
 
 Before downloading, OneLoad creates or opens the target without following links,
 requires an owner-protected directory chain, and rejects links, special files,
-unexpected entries, and unprotected model files. The Hugging Face downloader
-therefore receives only a validated target. The model lock records an immutable model revision plus exact byte sizes and
+unexpected entries, and unprotected model files. OneLoad's downloader therefore
+receives only a validated target. It pins the public Hub endpoint,
+disables implicit authentication, and removes inherited token and staging
+variables, so this public download cannot forward an ambient Hugging Face token.
+Only paths named by the lock are requested. Every response must use HTTPS, stay
+within its locked byte budget, and match the locked SHA-256 before a private
+descriptor is published; the exact finished snapshot is validated again before
+the downloader reports success. Download metadata caches are not required.
+The model lock records an immutable model revision plus exact byte sizes and
 SHA-256 digests for the complete downloaded snapshot outside Hugging Face's
 private local cache. OneLoad traverses only directory prefixes named by that
 lock, skips the root `.cache` without descending, and rejects the first missing,
@@ -31,9 +38,9 @@ gives only that bound view to MLX. It checks those bound identities after loadin
 and again after generation. The loader view and output staging require an
 owner-bound parent that is not group/world writable, or a trusted sticky parent;
 macOS extended allow ACLs are rejected, and create/open identities are compared
-before use. Runtime receipts expose the public model identity, revision, license,
-relative output names, timing, and hashes, but never the local model directory.
-The benchmark report and stable failure messages similarly exclude usernames,
+before use. Local operational receipts expose the public model identity, revision,
+license, relative output names, timing, and hashes, but never the local model
+directory. The publishable benchmark substitutes ordinal scene labels. Its report and stable failure messages similarly exclude usernames,
 device identifiers, terminal controls, absolute paths, network URLs, and private
 child-process commands.
 
@@ -54,10 +61,15 @@ copy of the exact manifest bytes validated by the parent. They use isolated
 Python import semantics, ignore the working directory and user site, and receive
 no inherited `BASH_ENV`, `ENV`, `PYTHONHOME`, `PYTHONPATH`, or `PYTHONSTARTUP`.
 The benchmark admits at most 16 render subprocesses and applies one 30-minute
-deadline across the complete run. Every child receipt
-must carry the same manifest SHA-256. The final report also binds the model-lock
-SHA-256, verified model byte count, and hashes of the runtime implementation. Its
-chip probe uses the fixed `/usr/sbin/sysctl` path with a five-second timeout.
+deadline across the complete run. Child stdout and stderr are byte-bounded, each
+child runs in a separate process group, and every receipt must match a strict
+schema and the same manifest SHA-256. The parent independently inventories and
+hashes the expected private WAV files. Only parent-measured end-to-end wall time
+is used as performance evidence; child-reported timing and memory fields are
+validated but discarded. The final report also binds the model-lock and
+dependency-lock SHA-256 values, verified model byte count, and hashes of the
+runtime implementation. Its chip probe uses the fixed `/usr/sbin/sysctl` path
+with a five-second timeout.
 
 After the model is downloaded, the documented benchmark runs with Hugging Face
 offline mode and telemetry disabled. It makes no paid API call and sends no

@@ -457,6 +457,7 @@ name = "oneload-tts-arm"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "httpx" },
     { name = "mlx-audio", extra = ["tts"] },
     { name = "soundfile" },
 ]
@@ -470,6 +471,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "httpx", specifier = "==0.28.1" },
     { name = "mlx-audio", extras = ["tts"], specifier = "==0.4.7" },
     { name = "soundfile", specifier = "==0.13.1" },
 ]

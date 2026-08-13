@@ -49,6 +49,59 @@ def _single_file_lock(model: Path) -> dict[str, object]:
     }
 
 
+def _fake_benchmark_render(command: list[str]) -> tuple[Path, dict[str, object]]:
+    child_path = Path(command[command.index("--manifest") + 1])
+    child_manifest = load_manifest(child_path)
+    output_dir = Path(command[command.index("--output-dir") + 1])
+    only = command[command.index("--only") + 1] if "--only" in command else None
+    selected = [
+        segment for segment in child_manifest.segments if only is None or segment.segment_id == only
+    ]
+    receipts: list[dict[str, object]] = []
+    for segment in selected:
+        output = output_dir / segment.output
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(f"fake-wav:{segment.segment_id}".encode())
+        receipts.append(
+            {
+                "id": segment.segment_id,
+                "output": segment.output.as_posix(),
+                "sha256": sha256_file(output),
+                "seed": segment.seed,
+                "characters": len(segment.text),
+                "sample_rate": 24_000,
+                "samples": 24_000,
+                "duration_seconds": 1.0,
+                "generation_seconds": 0.1,
+                "peak_amplitude": 0.5,
+                "rms_amplitude": 0.25,
+                "peak_model_memory_gb": 1.0,
+            }
+        )
+    model_lock = load_model_lock(benchmark.MODEL_LOCK_PATH)
+    child_wall_seconds = round(0.2 + 0.1 * len(selected), 3)
+    audio_seconds = float(len(selected))
+    return child_path, {
+        "status": "ok",
+        "mode": "persistent-batch" if len(selected) > 1 else "single-cold-process",
+        "manifest_sha256": child_manifest.sha256,
+        "model_id": model_lock["model_id"],
+        "model_revision": model_lock["revision"],
+        "model_license": model_lock["license"],
+        "model_verified_bytes": sum(item["size"] for item in model_lock["required_files"].values()),
+        "speaker": child_manifest.settings.speaker,
+        "segments_rendered": len(selected),
+        "model_loads": 1,
+        "model_load_seconds": 0.1,
+        "generation_seconds": 0.1 * len(selected),
+        "wall_seconds": child_wall_seconds,
+        "audio_seconds": audio_seconds,
+        "real_time_factor": round(child_wall_seconds / audio_seconds, 4),
+        "peak_model_memory_gb": 1.0,
+        "receipts": receipts,
+    }
+
+
 def test_validate_model_checks_exact_file_sizes_and_hashes(tmp_path: Path) -> None:
     model = tmp_path / "model"
     tokenizer = model / "speech_tokenizer"
@@ -818,21 +871,10 @@ def test_benchmark_children_use_parent_manifest_snapshot(
     ) -> tuple[float, dict]:
         del environment
         assert 0 < timeout_seconds <= benchmark.BENCHMARK_TIMEOUT_SECONDS
-        child_path = Path(command[command.index("--manifest") + 1])
+        child_path, receipt = _fake_benchmark_render(command)
         child_manifest = load_manifest(child_path)
         child_hashes.append(child_manifest.sha256)
-        return 0.1, {
-            "manifest_sha256": child_manifest.sha256,
-            "model_id": "example/model",
-            "model_revision": "abc123",
-            "model_license": "Apache-2.0",
-            "model_verified_bytes": 123,
-            "model_load_seconds": 0.1,
-            "generation_seconds": 0.1,
-            "peak_model_memory_gb": 1.0,
-            "audio_seconds": 1.0,
-            "receipts": [{"id": "scene", "sha256": child_manifest.sha256}],
-        }
+        return 0.1, receipt
 
     monkeypatch.setattr(benchmark, "_run_render", fake_run_render)
     monkeypatch.setattr(benchmark, "_hardware", lambda: {})
@@ -842,15 +884,32 @@ def test_benchmark_children_use_parent_manifest_snapshot(
     assert child_hashes == [manifest.sha256, manifest.sha256]
     assert manifest.sha256 != replacement_hash
     assert result["manifest_sha256"] == manifest.sha256
-    assert result["schema_version"] == 3
-    assert result["model_verified_bytes"] == 123
+    assert result["schema_version"] == 4
+    assert result["model_verified_bytes"] == sum(
+        item["size"] for item in load_model_lock()["required_files"].values()
+    )
     assert result["model_lock_sha256"] == sha256_file(benchmark.MODEL_LOCK_PATH)
+    assert result["runtime_lock_sha256"] == sha256_file(benchmark.UV_LOCK_PATH)
     assert set(result["implementation_sha256"]) == {
         f"src/oneload_tts/{name}" for name in benchmark.IMPLEMENTATION_FILES
     }
     assert set(result["security_control_sha256"]) == {
         f"src/oneload_tts/{name}" for name in benchmark.SECURITY_CONTROL_FILES
     }
+    assert set(result["baseline"]) == {"mode", "render_processes", "wall_seconds"}
+    assert set(result["optimized"]) == {"mode", "render_processes", "wall_seconds"}
+    assert set(result["improvement"]) == {
+        "wall_clock_speedup",
+        "wall_clock_reduction_percent",
+        "render_process_reduction_percent",
+        "bit_identical_outputs",
+    }
+    assert not {
+        "model_load_seconds",
+        "generation_seconds",
+        "audio_seconds",
+        "peak_model_memory_gb",
+    } & set(json.dumps(result).split('"'))
     assert "created_at" not in result
 
 
@@ -886,7 +945,10 @@ def test_committed_benchmark_is_sanitized_and_binds_current_sources() -> None:
     assert "os_version" not in serialized
     assert "/Users/" not in serialized
     assert "/Volumes/" not in serialized
+    assert result["schema_version"] == 4
     assert result["model_lock_sha256"] == sha256_file(benchmark.MODEL_LOCK_PATH)
+    assert result["runtime_lock_sha256"] == sha256_file(benchmark.UV_LOCK_PATH)
+    assert set(result["output_sha256"]) == {"scene-01", "scene-02", "scene-03"}
     assert (
         result["manifest_sha256"]
         == load_manifest(benchmark.PROJECT_ROOT / "examples/demo-manifest.json").sha256
@@ -925,18 +987,8 @@ def test_benchmark_children_use_isolated_imports_and_sanitized_python_environmen
     ) -> tuple[float, dict]:
         observed.append((command, environment))
         assert 0 < timeout_seconds <= benchmark.BENCHMARK_TIMEOUT_SECONDS
-        return 0.1, {
-            "manifest_sha256": manifest.sha256,
-            "model_id": "example/model",
-            "model_revision": "abc123",
-            "model_license": "Apache-2.0",
-            "model_verified_bytes": 123,
-            "model_load_seconds": 0.1,
-            "generation_seconds": 0.1,
-            "peak_model_memory_gb": 1.0,
-            "audio_seconds": 1.0,
-            "receipts": [{"id": "scene", "sha256": "same"}],
-        }
+        _, receipt = _fake_benchmark_render(command)
+        return 0.1, receipt
 
     monkeypatch.setenv("PYTHONHOME", "/attacker/home")
     monkeypatch.setenv("PYTHONPATH", "/attacker/path")
@@ -956,6 +1008,16 @@ def test_benchmark_children_use_isolated_imports_and_sanitized_python_environmen
         assert "PYTHONSTARTUP" not in environment
         assert "BASH_ENV" not in environment
         assert "ENV" not in environment
+        assert set(environment) == {
+            "HOME",
+            "TMPDIR",
+            "PATH",
+            "LANG",
+            "LC_ALL",
+            "HF_HUB_DISABLE_TELEMETRY",
+            "HF_HUB_OFFLINE",
+            "TOKENIZERS_PARALLELISM",
+        }
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="macOS ACL behavior")
@@ -1038,19 +1100,104 @@ def test_benchmark_rejects_child_manifest_digest_mismatch(
         run_benchmark(manifest=manifest, model_path=tmp_path / "model", trials=1)
 
 
-def test_benchmark_subprocess_failure_does_not_expose_command(
-    monkeypatch: pytest.MonkeyPatch,
+def test_benchmark_rejects_empty_child_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "defaults": {"speaker": "Aiden", "language": "English"},
+                "segments": [
+                    {"id": "scene", "text": "Safe text.", "output": "scene.wav", "seed": 1}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = load_manifest(manifest_path)
+
+    def forged(command: list[str], *args, **kwargs) -> tuple[float, dict[str, object]]:
+        del args, kwargs
+        _, receipt = _fake_benchmark_render(command)
+        receipt["receipts"] = []
+        return 0.1, receipt
+
+    monkeypatch.setattr(benchmark, "_run_render", forged)
+
+    with pytest.raises(RuntimeError, match="invalid receipt"):
+        run_benchmark(manifest=manifest, model_path=tmp_path / "model", trials=1)
+
+
+def test_benchmark_rejects_child_hash_not_bound_to_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "defaults": {"speaker": "Aiden", "language": "English"},
+                "segments": [
+                    {"id": "scene", "text": "Safe text.", "output": "scene.wav", "seed": 1}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = load_manifest(manifest_path)
+
+    def forged(command: list[str], *args, **kwargs) -> tuple[float, dict[str, object]]:
+        del args, kwargs
+        _, receipt = _fake_benchmark_render(command)
+        items = receipt["receipts"]
+        assert isinstance(items, list)
+        items[0]["sha256"] = "0" * 64
+        return 0.1, receipt
+
+    monkeypatch.setattr(benchmark, "_run_render", forged)
+
+    with pytest.raises(RuntimeError, match="outputs differ"):
+        run_benchmark(manifest=manifest, model_path=tmp_path / "model", trials=1)
+
+
+def test_benchmark_rejects_extreme_child_metrics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "defaults": {"speaker": "Aiden", "language": "English"},
+                "segments": [
+                    {"id": "scene", "text": "Safe text.", "output": "scene.wav", "seed": 1}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = load_manifest(manifest_path)
+
+    def forged(command: list[str], *args, **kwargs) -> tuple[float, dict[str, object]]:
+        del args, kwargs
+        _, receipt = _fake_benchmark_render(command)
+        receipt["peak_model_memory_gb"] = 1e308
+        return 0.1, receipt
+
+    monkeypatch.setattr(benchmark, "_run_render", forged)
+
+    with pytest.raises(RuntimeError, match="invalid receipt"):
+        run_benchmark(manifest=manifest, model_path=tmp_path / "model", trials=1)
+
+
+def test_benchmark_subprocess_failure_does_not_expose_command() -> None:
     private_command = [
-        "/private/operator/python",
-        "--output-dir",
-        "/private/oneload-benchmark-secret/trial-1",
+        sys.executable,
+        "-c",
+        "import sys; print('/private/child/detail', file=sys.stderr); raise SystemExit(1)",
     ]
-
-    def fail(*args, **kwargs) -> None:
-        raise subprocess.CalledProcessError(1, private_command, stderr="private child detail")
-
-    monkeypatch.setattr(benchmark.subprocess, "run", fail)
 
     with pytest.raises(RuntimeError) as captured:
         _run_render(private_command, {}, timeout_seconds=1)
@@ -1061,21 +1208,14 @@ def test_benchmark_subprocess_failure_does_not_expose_command(
     assert captured.value.__suppress_context__ is True
 
 
-def test_benchmark_render_uses_remaining_global_deadline(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    observed_timeout = None
+def test_benchmark_render_accepts_one_bounded_json_receipt() -> None:
+    _, receipt = _run_render(
+        [sys.executable, "-c", 'print(\'{"status":"ok"}\')'],
+        {},
+        timeout_seconds=2.5,
+    )
 
-    def complete(command, **kwargs):
-        nonlocal observed_timeout
-        observed_timeout = kwargs["timeout"]
-        return subprocess.CompletedProcess(command, 0, stdout='{"status":"ok"}\n', stderr="")
-
-    monkeypatch.setattr(benchmark.subprocess, "run", complete)
-
-    _run_render([sys.executable], {}, timeout_seconds=2.5)
-
-    assert observed_timeout == 2.5
+    assert receipt == {"status": "ok"}
 
 
 def test_benchmark_render_rejects_expired_global_deadline(
@@ -1083,9 +1223,20 @@ def test_benchmark_render_rejects_expired_global_deadline(
 ) -> None:
     monkeypatch.setattr(
         benchmark.subprocess,
-        "run",
+        "Popen",
         lambda *args, **kwargs: pytest.fail("expired benchmark must not start a child"),
     )
 
     with pytest.raises(RuntimeError, match="deadline exceeded"):
         _run_render([sys.executable], {}, timeout_seconds=0)
+
+
+def test_benchmark_render_rejects_unbounded_child_output() -> None:
+    command = [
+        sys.executable,
+        "-c",
+        f"print('x' * {benchmark.MAX_RENDER_STREAM_BYTES + 1})",
+    ]
+
+    with pytest.raises(RuntimeError, match="receipt limit"):
+        _run_render(command, {}, timeout_seconds=2)
