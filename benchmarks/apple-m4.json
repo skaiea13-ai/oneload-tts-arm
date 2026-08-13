@@ -1,0 +1,116 @@
+{
+  "baseline": {
+    "generation_seconds": 8.464,
+    "mode": "one cold process per scene",
+    "model_load_seconds": 2.135,
+    "model_loads": 3,
+    "peak_model_memory_gb": 6.062,
+    "wall_seconds": 19.766
+  },
+  "hardware": {
+    "architecture": "arm64",
+    "chip": "Apple M4"
+  },
+  "implementation_sha256": {
+    "src/oneload_tts/__init__.py": "c160775f20c890edc699b58435d4881ecf44f1cf89e16fcaaf17cceaf01fa569",
+    "src/oneload_tts/__main__.py": "3012568e074e69e496332f94ef7f2f7ca54ac5a41711a910facc975be9d60ef6",
+    "src/oneload_tts/_filesystem.py": "e1981dcb7da01a138d5a7400f948700b84b6241c4418f37f7540dc723d2901d4",
+    "src/oneload_tts/benchmark.py": "35bb59c3d7883c4de7bc5974296b8126f85fdca9ed75d9d619ca2dd761f5f342",
+    "src/oneload_tts/cli.py": "8429d780ebf14e4adb9ad047fbfbed8f6e2ca120857a7f4e99149b58ad6a8cd6",
+    "src/oneload_tts/engine.py": "49084f93eed608c09889eada8eae290f1dc0a45cdf8cc924be058c574ef309b1",
+    "src/oneload_tts/manifest.py": "6e6329f5fd6018862e67f8bda721ed0b70eb24c5fd9d1ac949ae792a3fb57059"
+  },
+  "improvement": {
+    "bit_identical_outputs": true,
+    "model_load_reduction_percent": 66.7,
+    "peak_model_memory_change_percent": 0.0,
+    "wall_clock_reduction_percent": 38.1,
+    "wall_clock_speedup": 1.616
+  },
+  "manifest_sha256": "eedc08bca1b6a71cffaff24031864c130bb63c7348622ddab07a0bdecb964a32",
+  "metric_scope": "median end-to-end wall clock including process startup and model loading",
+  "model_id": "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-6bit",
+  "model_license": "Apache-2.0",
+  "model_lock_sha256": "aa8fa8931153b78c5e0a4e02bdd1115f917ce2e331012ffb16297b863f4e78ad",
+  "model_revision": "1c6c0ff58c43afa8df571facde2efa077efd85e2",
+  "model_verified_bytes": 2696100432,
+  "optimized": {
+    "audio_seconds": 17.84,
+    "generation_seconds": 8.46,
+    "mode": "one persistent process for the scene manifest",
+    "model_load_seconds": 0.71,
+    "model_loads": 1,
+    "peak_model_memory_gb": 6.062,
+    "wall_seconds": 12.234
+  },
+  "output_sha256": {
+    "cold-baseline": "c541c23d57d575c10a6e89b72779bea02431d342385b5c00ac0bc04d7bdcd29e",
+    "persistent-batch": "74e721c2d7f9a01a32ed1007a7f5d7bc9f5b501e0292c3c025663f500d1f6b73",
+    "private-by-default": "e26ab44b73002a2e86aa12e2a32b854982abad4a31afb6b6e8dad6abc3802e92"
+  },
+  "schema_version": 3,
+  "security_control_sha256": {
+    "src/oneload_tts/download_guard.py": "9a2e0f310e0b890f5f7c21c473af1a3105eecf1fe8d9f49ec4774b4ff2267f84"
+  },
+  "segments": 3,
+  "trial_results": [
+    {
+      "baseline": {
+        "generation_seconds": 8.464,
+        "model_load_seconds": 2.167,
+        "peak_model_memory_gb": 6.062,
+        "wall_seconds": 19.769
+      },
+      "optimized": {
+        "generation_seconds": 8.46,
+        "model_load_seconds": 0.715,
+        "peak_model_memory_gb": 6.062,
+        "wall_seconds": 12.232
+      },
+      "order": [
+        "cold",
+        "persistent"
+      ],
+      "trial": 1
+    },
+    {
+      "baseline": {
+        "generation_seconds": 8.44,
+        "model_load_seconds": 2.116,
+        "peak_model_memory_gb": 6.062,
+        "wall_seconds": 19.665
+      },
+      "optimized": {
+        "generation_seconds": 8.445,
+        "model_load_seconds": 0.699,
+        "peak_model_memory_gb": 6.062,
+        "wall_seconds": 12.234
+      },
+      "order": [
+        "persistent",
+        "cold"
+      ],
+      "trial": 2
+    },
+    {
+      "baseline": {
+        "generation_seconds": 8.486,
+        "model_load_seconds": 2.135,
+        "peak_model_memory_gb": 6.062,
+        "wall_seconds": 19.766
+      },
+      "optimized": {
+        "generation_seconds": 8.488,
+        "model_load_seconds": 0.71,
+        "peak_model_memory_gb": 6.062,
+        "wall_seconds": 12.266
+      },
+      "order": [
+        "cold",
+        "persistent"
+      ],
+      "trial": 3
+    }
+  ],
+  "trials": 3
+}

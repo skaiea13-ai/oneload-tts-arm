@@ -1,0 +1,46 @@
+[project]
+name = "oneload-tts-arm"
+version = "0.1.0"
+description = "Persistent-load Qwen3-TTS batch narration for Apple Silicon"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = "MIT"
+authors = [{ name = "OneLoad contributors" }]
+dependencies = [
+  "mlx-audio[tts]==0.4.7",
+  "soundfile==0.13.1",
+]
+
+[project.scripts]
+oneload-tts = "oneload_tts.cli:main"
+
+[dependency-groups]
+dev = [
+  "hatchling==1.27.0",
+  "pytest==9.0.3",
+  "ruff==0.12.8",
+]
+
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/oneload_tts"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"model-lock.json" = "oneload_tts/model-lock.json"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "S", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S108"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]

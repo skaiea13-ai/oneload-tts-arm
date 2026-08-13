@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "defaults": {
+    "speaker": "Aiden",
+    "language": "English",
+    "instruction": "Calm technical narrator. Low, steady, and unhurried, with restrained warmth and clear sentence-final pauses.",
+    "temperature": 0.9,
+    "top_k": 50,
+    "top_p": 1.0,
+    "repetition_penalty": 1.05,
+    "max_tokens": 1024
+  },
+  "segments": [
+    {
+      "id": "private-by-default",
+      "text": "Local narration keeps unfinished scripts on the device and removes per-generation API cost.",
+      "output": "01-private-by-default.wav",
+      "seed": 20260810
+    },
+    {
+      "id": "cold-baseline",
+      "text": "The cold baseline starts a new process and reloads the same model for every scene.",
+      "output": "02-cold-baseline.wav",
+      "seed": 20260811
+    },
+    {
+      "id": "persistent-batch",
+      "text": "OneLoad keeps the quantized Qwen model in Apple Silicon memory and renders the full scene manifest in one process.",
+      "output": "03-persistent-batch.wav",
+      "seed": 20260812
+    }
+  ]
+}
